@@ -1,3 +1,3 @@
-module github.com/traefik-plugins/traefik-jwt-plugin
+module github.com/facctum-core/traefik-jwt-plugin
 
 go 1.17
