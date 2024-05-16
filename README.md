@@ -53,6 +53,7 @@ Required | Is `Authorization` header with JWT token required for every request.
 Keys | Used to validate JWT signature. Multiple keys are supported. Allowed values include certificates, public keys, symmetric keys. In case the value is a valid URL, the plugin will fetch keys from the JWK endpoint.
 ForceRefreshKeys | Force fetching keys from JWKS service when the key of current JWT token is not found. If set false, keys will only be refreshed every 15 minutes by default.
 Alg | Used to verify which PKI algorithm is used in the JWT.
+Aud | Audience to match, will be valid if matched to even 1 provided audiance. Multiple audience may be specified (string array).
 JwksHeaders | Map used to add headers to a JWKS request (e.g. credentials for a 3rd party JWKS service).
 JwtHeaders | Map used to inject JWT payload fields as HTTP request headers.
 OpaHeaders | Map used to inject OPA result fields as HTTP request headers. Populated if request is allowed by OPA. Only 1st level keys from OPA document are supported.
@@ -78,6 +79,8 @@ spec:
       OpaBody: true
       PayloadFields:
         - exp
+      Aud:
+        - https://api.example.com
       Required: true
       Keys:
         - https://samples.auth0.com/.well-known/jwks.json
