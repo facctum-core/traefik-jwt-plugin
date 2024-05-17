@@ -187,7 +187,7 @@ func New(ctx context.Context, next http.Handler, config *Config, pluginName stri
 		payloadFields:      config.PayloadFields,
 		required:           config.Required,
 		alg:                config.Alg,
-		aud:   				config.Aud 
+		aud:   				config.Aud,
 		keys:               make(map[string]interface{}),
 		opaHeaders:         config.OpaHeaders,
 		jwtHeaders:         config.JwtHeaders,
@@ -631,9 +631,10 @@ func (jwtPlugin *JwtPlugin) VerifyToken(jwtToken *JWT) error {
 	}
 	// Verifying Audiance, any incoming audiance in JWT should match to any provided Audiance(s)
 	isAudianceValid := false
+	fmt.Println(jwtToken.Payload)
 	if jwtPlugin.aud != nil && len(jwtPlugin.aud) > 0 {
 		// (Any) match logic
-		for _, audToken := range jwtToken.aud {
+		for _, audToken := range jwtToken.Payload["aud"] {
 			for _, audProvided := range jwtPlugin.aud {
 				if audToken == audProvided {
 					isAudianceValid = true // At least one string in A exists in B
@@ -641,7 +642,7 @@ func (jwtPlugin *JwtPlugin) VerifyToken(jwtToken *JWT) error {
 			}
 		}
 		// Throw error if not valid audiance
-		if isAudianceValid = false {
+		if isAudianceValid == false {
 			return fmt.Errorf("token audiance validation failed")
 		}
 	}
