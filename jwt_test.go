@@ -1135,6 +1135,51 @@ func TestTokenFromQueryNotConfigured(t *testing.T) {
 	}
 }
 
+func TestTokenForAud(t *testing.T) {
+    cfg := *CreateConfig()
+    ctx := context.Background()
+    nextCalled := false
+    next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) { nextCalled = true })
+
+    // Set the audience in plugin configuration
+    cfg.Aud = []string{"test-audience"}
+
+    jwt, err := New(ctx, next, &cfg, "test-traefik-jwt-plugin")
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    recorder := httptest.NewRecorder()
+
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    query := req.URL.Query()
+    query.Add("jwt", "eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.TnHVsM5_N0SKi_HCwlz3ys1cDktu10g_sKkjqzVe5k09z-bmByflWPFWjAbwgRCKAc77kF8BjDNv0gisAPurBxgxNGxioDFehhcb0IS0YeCAWpzRfBMT6gQZ1gZeNM2Dg_yf4shPhF4rcUCGqnFFzIDSU9Rv2NNMK5DPO4512uTxAQUMHpi5PGTki-zykqTB10Ju1L4jRhmJwJDtGcfdHPlEKKUrFPfYl3RPZLOfdyAqSJ8Gi0R3ymDffmXHz08AJUAY_Kapk8laggIYcvFJhYGJBWZpcy7NWMiOIjEI3bogki4o7z0-Z1xMZdZ9rqypQ1MB44F8VZS2KkPfEmhSog")
+    req.URL.RawQuery = query.Encode()
+
+    jwt.ServeHTTP(recorder, req)
+
+    if nextCalled == true {
+        t.Fatal("next.ServeHTTP was called, but should not")
+    }
+
+    // Test case for valid audience
+    // Modify the JWT token to include the correct audience
+    query.Set("jwt", "eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMiwiYXVkIjoid3d3LmV4YW1wbGUuY29tIn0.bPoJ8Vb-N0qV9H2x1st_sXg-e1ZnYoA-Evf9cQeLdxKcF8eCKSpIiKVEy3a0Id6Xfvnb5oEeuf7dDp8IHnalyzpU73mkF_4-NFLQpC_XmYThWc7SsrxCBB4IYeDKxGAFZoTw9OkM_MZfZju1ZbiMUZGYI-0f3N743z93zMyUA3WF21RJozPE5AbHcHsYypwV3q169Z82zPrrqgthXIvVqzCQBh8ariYgfIXL1O3DjiM2kXup4rRIQsmjq2QuBT9eUDMJUw7NvZdiVwNeNUdZn3184AxlgL1v-vbanYYlwIckKJrHQF8rRcQvBrv_S20w1SWUZ8wIIj4rhLHulCm_gg")
+    req.URL.RawQuery = query.Encode()
+
+    // Serve the request again
+    nextCalled = false
+    jwt.ServeHTTP(recorder, req)
+
+    if !nextCalled {
+        t.Fatal("next.ServeHTTP was not called, but should be")
+    }
+}
+
 func TestTokenFromQueryConfiguredButNotInURL(t *testing.T) {
 	cfg := *CreateConfig()
 	cfg.JwtQueryKey = "jwt"

@@ -629,22 +629,48 @@ func (jwtPlugin *JwtPlugin) VerifyToken(jwtToken *JWT) error {
 	if !ok && jwtPlugin.forceRefreshKeys() {
 		key, ok = jwtPlugin.getKeysSync()[jwtToken.Header.Kid]
 	}
-	// Verifying Audiance, any incoming audiance in JWT should match to any provided Audiance(s)
-	isAudianceValid := false
+	// Verifying Audience, any incoming audience in JWT should match any provided Audience(s)
+	fmt.Println("PAYLOAD ::::")
 	fmt.Println(jwtToken.Payload)
-	if jwtPlugin.aud != nil && len(jwtPlugin.aud) > 0 {
-		// (Any) match logic
-		for _, audToken := range jwtToken.Payload["aud"] {
+	isAudienceValid := false
+
+	if jwtPlugin.aud != nil && len(jwtPlugin.aud) > 0 && jwtToken.Payload["aud"] != nil {
+		// Check if "aud" claim is a string
+		audienceClaim, ok := jwtToken.Payload["aud"].(string)
+		if ok {
+			// Single audience case
 			for _, audProvided := range jwtPlugin.aud {
-				if audToken == audProvided {
-					isAudianceValid = true // At least one string in A exists in B
+				if audienceClaim == audProvided {
+					isAudienceValid = true
+					break
+				}
+			}
+		} else {
+			// Check if "aud" claim is an array of strings
+			audienceArrayClaim, ok := jwtToken.Payload["aud"].([]interface{})
+			if ok {
+				// Multiple audience case
+				for _, audToken := range audienceArrayClaim {
+					audClaim, ok := audToken.(string)
+					if ok {
+						for _, audProvided := range jwtPlugin.aud {
+							if audClaim == audProvided {
+								isAudienceValid = true
+								break
+							}
+						}
+					}
 				}
 			}
 		}
-		// Throw error if not valid audiance
-		if isAudianceValid == false {
-			return fmt.Errorf("token audiance validation failed")
+
+		// Throw error if not valid audience
+		if !isAudienceValid {
+			return fmt.Errorf("token audience validation failed")
 		}
+	} else {
+		// Throw error if audience is not provided in JWT or plugin configuration
+		return fmt.Errorf("token audience or plugin audience configuration is invalid")
 	}
 
 
