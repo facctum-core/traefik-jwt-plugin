@@ -41,6 +41,7 @@ type Config struct {
 	Keys               []string
 	ForceRefreshKeys   bool
 	Alg                string
+	Aud                []string
 	OpaHeaders         map[string]string
 	JwtHeaders         map[string]string
 	JwksHeaders        map[string]string
@@ -72,6 +73,7 @@ type JwtPlugin struct {
 	jwkEndpoints       []*url.URL
 	keys               map[string]interface{}
 	alg                string
+	aud   			   []string
 	opaHeaders         map[string]string
 	jwtHeaders         map[string]string
 	jwksHeaders        map[string]string
@@ -185,6 +187,7 @@ func New(ctx context.Context, next http.Handler, config *Config, pluginName stri
 		payloadFields:      config.PayloadFields,
 		required:           config.Required,
 		alg:                config.Alg,
+		aud:   				config.Aud,
 		keys:               make(map[string]interface{}),
 		opaHeaders:         config.OpaHeaders,
 		jwtHeaders:         config.JwtHeaders,
@@ -626,6 +629,51 @@ func (jwtPlugin *JwtPlugin) VerifyToken(jwtToken *JWT) error {
 	if !ok && jwtPlugin.forceRefreshKeys() {
 		key, ok = jwtPlugin.getKeysSync()[jwtToken.Header.Kid]
 	}
+	// Verifying Audience, any incoming audience in JWT should match any provided Audience(s)
+	fmt.Println("PAYLOAD ::::")
+	fmt.Println(jwtToken.Payload)
+	isAudienceValid := false
+
+	if jwtPlugin.aud != nil && len(jwtPlugin.aud) > 0 && jwtToken.Payload["aud"] != nil {
+		// Check if "aud" claim is a string
+		audienceClaim, ok := jwtToken.Payload["aud"].(string)
+		if ok {
+			// Single audience case
+			for _, audProvided := range jwtPlugin.aud {
+				if audienceClaim == audProvided {
+					isAudienceValid = true
+					break
+				}
+			}
+		} else {
+			// Check if "aud" claim is an array of strings
+			audienceArrayClaim, ok := jwtToken.Payload["aud"].([]interface{})
+			if ok {
+				// Multiple audience case
+				for _, audToken := range audienceArrayClaim {
+					audClaim, ok := audToken.(string)
+					if ok {
+						for _, audProvided := range jwtPlugin.aud {
+							if audClaim == audProvided {
+								isAudienceValid = true
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Throw error if not valid audience
+		if !isAudienceValid {
+			return fmt.Errorf("token audience validation failed")
+		}
+	} else {
+		// Throw error if audience is not provided in JWT or plugin configuration
+		return fmt.Errorf("token audience or plugin audience configuration is invalid")
+	}
+
+
 	if ok {
 		return a.verify(key, a.hash, jwtToken.Plaintext, jwtToken.Signature)
 	} else {
