@@ -404,7 +404,12 @@ func (jwtPlugin *JwtPlugin) ServeHTTP(rw http.ResponseWriter, request *http.Requ
 		if st >= 300 && st < 600 {
 			http.Error(rw, err.Error(), st)
 		} else {
-			http.Error(rw, err.Error(), http.StatusForbidden)
+			if http.StatusForbidden == 403{
+				http.Error(rw, "Authorization failed, token missing or invalid", http.StatusForbidden)
+			}else{
+				http.Error(rw, err.Error(), http.StatusForbidden)
+			}
+			
 		}
 		return
 	}
