@@ -47,8 +47,10 @@ type Config struct {
 	JwksHeaders        map[string]string
 	OpaResponseHeaders map[string]string
 	OpaHttpStatusField string
-	JwtCookieKey       string
-	JwtQueryKey        string
+	JwtCookieKey       string // Deprecated: use JwtSources instead
+	JwtQueryKey        string // Deprecated: use JwtSources instead
+	JwtSources         []map[string]string
+	Aud                string
 }
 
 // CreateConfig creates a new OPA Config
@@ -79,8 +81,8 @@ type JwtPlugin struct {
 	jwksHeaders        map[string]string
 	opaResponseHeaders map[string]string
 	opaHttpStatusField string
-	jwtCookieKey       string
-	jwtQueryKey        string
+	jwtSources         []map[string]string
+	aud                string
 
 	name            string
 	keysLock        sync.RWMutex
@@ -161,7 +163,7 @@ type PayloadInput struct {
 	Headers    map[string][]string    `json:"headers"`
 	JWTHeader  JwtHeader              `json:"tokenHeader"`
 	JWTPayload map[string]interface{} `json:"tokenPayload"`
-	Body       map[string]interface{} `json:"body,omitempty"`
+	Body       interface{}            `json:"body,omitempty"`
 	Form       url.Values             `json:"form,omitempty"`
 }
 
@@ -194,9 +196,19 @@ func New(ctx context.Context, next http.Handler, config *Config, pluginName stri
 		jwksHeaders:        config.JwksHeaders,
 		opaResponseHeaders: config.OpaResponseHeaders,
 		opaHttpStatusField: config.OpaHttpStatusField,
-		jwtCookieKey:       config.JwtCookieKey,
-		jwtQueryKey:        config.JwtQueryKey,
+		jwtSources:         config.JwtSources,
+		aud:                config.Aud,
 		name:               pluginName,
+	}
+	// use default order if jwtSourceOrder is set
+	if len(jwtPlugin.jwtSources) == 0 {
+		jwtPlugin.jwtSources = []map[string]string{{"type": "bearer", "key": "Authorization"}}
+		if config.JwtCookieKey != "" {
+			jwtPlugin.jwtSources = append(jwtPlugin.jwtSources, map[string]string{"type": "cookie", "key": config.JwtCookieKey})
+		}
+		if config.JwtQueryKey != "" {
+			jwtPlugin.jwtSources = append(jwtPlugin.jwtSources, map[string]string{"type": "query", "key": config.JwtQueryKey})
+		}
 	}
 	if len(config.Keys) > 0 {
 		if err := jwtPlugin.ParseKeys(config.Keys); err != nil {
@@ -467,6 +479,43 @@ func (jwtPlugin *JwtPlugin) CheckToken(request *http.Request, rw http.ResponseWr
 					return 0, fmt.Errorf("token not valid yet")
 				}
 			}
+			if fieldName == "aud" && jwtPlugin.aud != "" {
+				audValue := jwtToken.Payload["aud"]
+				switch v := audValue.(type) {
+				case string:
+					if v != jwtPlugin.aud {
+						logError(fmt.Sprintf("Token audience mismatch, expected %s got %s", jwtPlugin.aud, v)).
+							withSub(sub).
+							withUrl(request.URL.String()).
+							withNetwork(jwtPlugin.remoteAddr(request)).
+							print()
+						return 0, fmt.Errorf("token audience mismatch")
+					}
+				case []interface{}:
+					found := false
+					for _, a := range v {
+						if aStr, ok := a.(string); ok && aStr == jwtPlugin.aud {
+							found = true
+							break
+						}
+					}
+					if !found {
+						logError(fmt.Sprintf("Token audience not found in list, expected %s", jwtPlugin.aud)).
+							withSub(sub).
+							withUrl(request.URL.String()).
+							withNetwork(jwtPlugin.remoteAddr(request)).
+							print()
+						return 0, fmt.Errorf("token audience not found in list")
+					}
+				default:
+					logError("Token audience has invalid type").
+						withSub(sub).
+						withUrl(request.URL.String()).
+						withNetwork(jwtPlugin.remoteAddr(request)).
+						print()
+					return 0, fmt.Errorf("token audience has invalid type")
+				}
+			}
 		}
 		for k, v := range jwtPlugin.jwtHeaders {
 			_, ok := jwtToken.Payload[v]
@@ -489,13 +538,33 @@ func (jwtPlugin *JwtPlugin) CheckToken(request *http.Request, rw http.ResponseWr
 }
 
 func (jwtPlugin *JwtPlugin) ExtractToken(request *http.Request) (*JWT, error) {
-	// first check if the token is present in header and is valid
-	jwtTokenStr, err := jwtPlugin.extractTokenFromHeader(request)
-	if err != nil && jwtPlugin.jwtCookieKey != "" {
-		jwtTokenStr, err = jwtPlugin.extractTokenFromCookie(request)
-	}
-	if err != nil && jwtPlugin.jwtQueryKey != "" {
-		jwtTokenStr, err = jwtPlugin.extractTokenFromQuery(request)
+	// extract from header, cookie, or query with given priority
+	var jwtTokenStr string
+	var err error
+	for _, sourceconfig := range jwtPlugin.jwtSources {
+		sourcetype, oktype := sourceconfig["type"]
+		if !oktype || (sourcetype != "bearer" && sourcetype != "header" && sourcetype != "cookie" && sourcetype != "query") {
+			jwtTokenStr, err = "", fmt.Errorf("source type unknown")
+			continue
+		}
+		sourcekey, okkey := sourceconfig["key"]
+		if !okkey || sourcekey == "" {
+			jwtTokenStr, err = "", fmt.Errorf("source key not found or empty")
+			continue
+		}
+		switch sourcetype {
+		case "bearer":
+			jwtTokenStr, err = jwtPlugin.extractTokenFromBearer(request, sourcekey)
+		case "header":
+			jwtTokenStr, err = jwtPlugin.extractTokenFromHeader(request, sourcekey)
+		case "cookie":
+			jwtTokenStr, err = jwtPlugin.extractTokenFromCookie(request, sourcekey)
+		case "query":
+			jwtTokenStr, err = jwtPlugin.extractTokenFromQuery(request, sourcekey)
+		}
+		if err == nil && jwtTokenStr != "" {
+			break
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -538,32 +607,40 @@ func (jwtPlugin *JwtPlugin) ExtractToken(request *http.Request) (*JWT, error) {
 	return &jwtToken, nil
 }
 
-func (jwtPlugin *JwtPlugin) extractTokenFromHeader(request *http.Request) (string, error) {
-	authHeader, ok := request.Header["Authorization"]
+func (jwtPlugin *JwtPlugin) extractTokenFromHeader(request *http.Request, key string) (string, error) {
+	authHeader, ok := request.Header[key]
 	if !ok {
 		return "", fmt.Errorf("authorization header missing")
 	}
 	auth := authHeader[0]
+	return auth, nil
+}
+
+func (jwtPlugin *JwtPlugin) extractTokenFromBearer(request *http.Request, key string) (string, error) {
+	auth, err := jwtPlugin.extractTokenFromHeader(request, key)
+	if err != nil {
+		return auth, err
+	}
 	if !strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 		return "", fmt.Errorf("authorization type not Bearer")
 	}
 	return auth[7:], nil
 }
 
-func (jwtPlugin *JwtPlugin) extractTokenFromCookie(request *http.Request) (string, error) {
-	cookie, err := request.Cookie(jwtPlugin.jwtCookieKey)
+func (jwtPlugin *JwtPlugin) extractTokenFromCookie(request *http.Request, key string) (string, error) {
+	cookie, err := request.Cookie(key)
 	if err != nil {
 		return "", err
 	}
 	return cookie.Value, nil
 }
 
-func (jwtPlugin *JwtPlugin) extractTokenFromQuery(request *http.Request) (string, error) {
+func (jwtPlugin *JwtPlugin) extractTokenFromQuery(request *http.Request, key string) (string, error) {
 	query := request.URL.Query()
-	if !query.Has(jwtPlugin.jwtQueryKey) {
+	if !query.Has(key) {
 		return "", fmt.Errorf("query parameter missing")
 	}
-	parameter := query.Get(jwtPlugin.jwtQueryKey)
+	parameter := query.Get(key)
 	return parameter, nil
 }
 
