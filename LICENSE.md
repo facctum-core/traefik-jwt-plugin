@@ -1,0 +1,5 @@
+Copyright © Facctum Solutions Limited. - All Rights Reserved.
+
+NOTICE: All information contained herein is, and remains the property of Facctum Solutions Limited, and where applicable, its licensors.
+The intellectual and technical concepts contained herein are proprietary to Facctum Solutions Limited and where applicable its licensors and are protected by international trade secret or copyright law. Further, they may be covered by registered patents in the United Kingdom, U.S., EU or anywhere in the world, or patents pending and/or in process.
+You must not use, copy, transfer, commercialise, alter, store, disassemble, decompile, reverse-engineer or create derivative works from all or any part of the information contained herein without the prior written consent of an authorised representative of Facctum Solutions Limited. Any breach of the intellectual property rights of Facctum Solutions Limited may give rise to a cause of legal action against you, whether under international copyright law or otherwise.
