@@ -4,6 +4,6 @@ RUN mkdir -p plugins-local/src/github.com/facctum-core/traefik-jwt-plugin
 COPY . plugins-local/src/github.com/facctum-core/traefik-jwt-plugin/
 
 RUN apk add --no-cache git && \
-    mkdir -p plugins-local/src/github.com/killer-djon/traefik-correlation && \
-    git clone --depth 1 --branch v1.3.0 https://github.com/killer-djon/traefik-correlation.git plugins-local/src/github.com/killer-djon/traefik-correlation && \
+    mkdir -p plugins-local/src/github.com/facctum-core/traefik-correlation && \
+    git clone --depth 1 https://github.com/facctum-core/traefik-correlation.git plugins-local/src/github.com/facctum-core/traefik-correlation && \
     apk del git
