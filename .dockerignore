@@ -1,0 +1,14 @@
+# Keep the Traefik local-plugin image lean: only the Go source is needed.
+node_modules
+.git
+.github
+*.png
+*.md
+package.json
+package-lock.json
+commitlint.config.js
+cspell.json
+.releaserc.yaml
+.golangci.yaml
+.editorconfig
+justfile
