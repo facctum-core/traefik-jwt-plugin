@@ -213,3 +213,14 @@ however requesting `/secure/xxx` would be rejected and results in a 403 Forbidde
 ## License
 
 This software is released under the Apache 2.0 License
+
+
+## Update ##
+23/03/2026 - There were securities vulnerabilities in semantic-release@19 due to which overrides were not working and this release using tar@6 versions. To upgrade package-lock.json we need to update the semantic-release as well.
+Current semantic-release@25.0.3 installed.
+Command ran to update versions:
+```
+npm install semantic-release@latest @semantic-release/git@latest @commitlint/config-conventional@latest --save-dev
+rm -rf node_modules package-lock.json
+npm install
+```
