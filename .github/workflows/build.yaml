@@ -6,7 +6,6 @@ on:
     paths-ignore:
       - '*.md'
       - '*.puml'
-      - '.github/workflows/release.yaml'
   pull_request:
     branches:
       - main
